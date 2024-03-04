@@ -1,0 +1,145 @@
+---
+title: "CHL5207 A2"
+author: "Feifan Xiang -- 1006533921"
+output:
+  pdf_document: default
+  keep_tex: true
+header-includes:
+  - \renewcommand{\baselinestretch}{2}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyr)
+library(kableExtra)
+library(knitr)
+library(jtools)
+```
+
+```{r, include = FALSE}
+titanic <- read.table("titanicdata.txt", header = TRUE)
+titanic
+```
+
+```{r, include = FALSE}
+survival <- uncount(titanic, titanic$surv)
+survival$surv <- 1
+death <- uncount(titanic, titanic$n - titanic$surv)
+death$surv <- 0
+surv_titanic <- rbind(death, survival)
+# surv_titanic$n <- seq(length(surv_titanic$n))
+```
+## Data
+The dataset in this study describes the basic demographic information and survival outcomes of the 2201 known passengers on the British luxury passenger liner Titanic in 1921. It contains information on the class of the passengers on board: crew, first class, second class or third class, the passengers' age, grouped as adult or child, and the sex, classified as female or male. It also documents the number of survived passengers from the ship sinkage and the total number of passengers in each category. There are 14 rows of different combinations of passenger conditions across 5 columns with no missing values.
+
+## Method
+For explanatory analysis, we constructed a bar plot to visualize the survival rates for males between adult and child passengers across different classes.\
+A baseline logistic regression based on our data is 
+
+$$
+\log(\frac{p}{1-p}) = logit(p) = \beta_0 + \beta_1*x_{sex} + \beta_2*x_{age} + \beta_3*x_{class}
+$$
+
+$$
+\text{Surival Probability: } p = \frac{1}{1+e^{-logit(p)}} = \frac{1}{1+e^{-(\beta_0 + \beta_1*x_{sex} + \beta_2*x_{age} + \beta_1*x_{class})}} \tag{Equation 1}
+$$
+where $p = Pr(y = 1|x)$ represents the probability of survival. $\beta_i$ and $x_i$ respectively represent the coefficients and factors class, age and sex in the model.\
+A logistic regression with main effects and all 2-way interaction terms was constructed, along with 3 models with different combinations of two 2-way interaction terms. LRT were performed for each of the 3 reduced models with the more saturated model. LRT test statistics follow chi-squared distribution with degree of freedom equaling the difference of features between the fuller model and the reduced model.
+
+## Analysis
+
+```{r, echo = FALSE}
+library(ggplot2)
+titanic_df <- data.frame(titanic)
+# Filter data and create the plot
+# titanic_df %>% filter(titanic_df$sex == 'male') %>% 
+  ggplot(data = titanic_df[titanic_df$sex == 'male', ], aes(x=age, y=surv/n, fill=class)) +
+  geom_bar(stat="identity", position=position_dodge()) +
+  labs(title = "Figure 1: Empirical Survival Rates for Males between Adult and Child among Class",
+       x = "Age",
+       y = "Survival Percentage (%)",
+       fill = "Class") +
+  scale_fill_brewer(palette="Paired") +
+  theme_minimal()
+
+```
+
+From Figure 1, for $\textbf{male}$ first- and second-class passengers, the estimated survival probabilities of children are both 100% while adult survival probabilities are both below 35%. This indicates that main effects might not have coherent effects across different combinations of the features. As the above description of age and classes for males, while controlling for classes and sex, the survival rates vary across age groups. Indicating that interactions terms should be added to capture the variations across groups.
+
+Furthermore, the probability specification for logistic regression shown in Equation 1 in $(0, 1)$ but not inclusive, that is the logistic regression model cannot make prediction on 0 or 1 probability event.  Therefore, the mean function of the baseline logistic regression is inadequate to explain our data.
+
+The LRT results showed that the model without class, sex interaction and the model without class, age interaction both resulted in statistically significant p values compared with the more saturated model, indicating these interactions are necessary for adequate model fit. Conversely, the interaction between age and sex, with a LRT p-value of 0.1942, was not statistically significant on a level of 0.05 allowing us to conclude that this interaction term can be eliminated without compromising the model's performance.
+
+
+```{r, include = FALSE}
+model0 <- glm(surv ~ factor(class) + factor(age) + factor(sex), 
+              family = binomial, data = surv_titanic)
+summary(model0)
+```
+
+```{r, echo = FALSE}
+model1 <- glm(surv ~ factor(class) * factor(age) + factor(age) * factor(sex) +
+                factor(class)* factor(sex), family = binomial,
+              data = surv_titanic)
+
+model_noclass_sex <- glm(surv ~ factor(class) * factor(age) + 
+                           factor(age) * factor(sex) , family = binomial, 
+                         data = surv_titanic)
+
+model_noage_sex <- glm(surv ~ factor(class) * factor(age) + 
+                           factor(class) * factor(sex) , family = binomial, 
+                         data = surv_titanic)
+
+
+summary(model_noage_sex)$coeff %>% 
+  kable(caption = "Summary Statistics of Model Output") %>% 
+  kable_styling(latex_options = "HOLD_position")
+
+model_noclass_age <- glm(surv ~ factor(class) * factor(sex) + 
+                           factor(age) * factor(sex) , family = binomial, 
+                         data = surv_titanic)
+
+# anova(model1, model_noclass_sex,  test = "Chisq")$"Pr(>Chi)"[2]
+
+result1 <- anova(model1, model_noclass_sex,  test = "Chisq")[2, ]
+
+result2 <- anova(model1, model_noage_sex, test = "Chisq")[2, ]
+result3 <- anova(model1, model_noclass_age, test = "Chisq")[2, ]
+# rbind(result1, result2, result3)[-3] %>% 
+#   kable(digits = 15, caption = "Summary Statistics of Likelihood Ratio Test Results")
+```
+
+The final model contains the age, class and sex main effects with class and sex, class and age interactions. Table 1 shows the summary statistics of the model fit. Assuming the mean function matches the data well, the estimated survival rates have 5.25, 0.923 and 0.12 times the survival rates of crews respectively and males are 0.043 times less likely to survive than female passengers , while controlling for other factors.
+
+## Appendix
+Words count excluding formula and Appendix: 497.\
+All analyses were done in R 4.3.2. Complete code for generating this report and analyses can be found at [].
+
+```{r, include = FALSE}
+ggplot(data = titanic_df[titanic_df$sex == 'female', ], aes(x=age, y=surv/n, fill=class)) +
+  geom_bar(stat="identity", position=position_dodge()) +
+  labs(title = "Figure 2: Empirical Survival Rates for Females between Adult and Child among Class",
+       x = "Age",
+       y = "Survival Percentage (%)",
+       fill = "Class") +
+  scale_fill_brewer(palette="Paired") +
+  theme_minimal()
+```
+
+
+### Likelihood Ratio Test Results:
+
+```{r, echo = FALSE}
+result1 <- anova(model1, model_noclass_sex,  test = "Chisq")[2, ]
+
+result2 <- anova(model1, model_noage_sex, test = "Chisq")[2, ]
+result3 <- anova(model1, model_noclass_age, test = "Chisq")[2, ]
+lrt_result <- rbind(result1, result2, result3)[-3]
+rownames(lrt_result) <- c('Model without class&sex', 
+                         'Model without age&sex', 'Model without class&age')
+lrt_result %>%
+  kable(digits = 15, caption = "Summary Statistics of Likelihood Ratio Test Results") %>% 
+  kable_styling(latex_options = "HOLD_position")
+```
+
+
